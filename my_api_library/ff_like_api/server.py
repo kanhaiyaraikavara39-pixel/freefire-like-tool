@@ -6,7 +6,7 @@ from .core import load_user_tokens, enc, make_request, send_multiple_requests
 
 def create_api_server(valid_keys, daily_limit=20):
     app = Flask(__name__)
-    used_count = {"count": 0}  # Dictionary to handle global scope cleanly
+    used_count = {"count": 0}
 
     @app.route('/like', methods=['GET'])
     def handle_requests():
@@ -21,7 +21,7 @@ def create_api_server(valid_keys, daily_limit=20):
             return jsonify({"error": "UID and region are required"}), 400
 
         try:
-            tokens = load_user_tokens(region) # यूजर के फोल्डर से टोकन
+            tokens = load_user_tokens(region)
             token = tokens[0]['token']
             encrypted_uid = enc(uid)
             
@@ -73,3 +73,15 @@ def create_api_server(valid_keys, daily_limit=20):
         })
 
     return app
+
+# CLI entry point
+def start_server():
+    import argparse
+    parser = argparse.ArgumentParser(description="Free Fire Like API")
+    parser.add_argument("--port", type=int, default=5000)
+    parser.add_argument("--limit", type=int, default=20)
+    parser.add_argument("--key", required=True, help="API key")
+    args = parser.parse_args()
+    
+    app = create_api_server([args.key], daily_limit=args.limit)
+    app.run(host="0.0.0.0", port=args.port)

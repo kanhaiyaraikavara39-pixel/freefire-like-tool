@@ -8,30 +8,69 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 from google.protobuf.message import DecodeError
 
-# तुम्हारे Protobuf इम्पोर्ट्स
 from . import like_pb2
 from . import uid_generator_pb2
 from . import visit_count_pb2
 
-# --- USER के फोल्डर से टोकन लोड करने का फंक्शन ---
-def load_user_tokens(region):
-    cwd = os.getcwd()  # यह यूजर का करेंट फोल्डर निकालेगा
-    try:
-        if region == "IND":
-            file_path = os.path.join(cwd, "token_ind.json")
-        elif region in {"BR", "US", "SAC", "NA"}:
-            file_path = os.path.join(cwd, "token_br.json")
-        else:
-            file_path = os.path.join(cwd, "token_bd.json")
-            
-        with open(file_path, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        raise Exception(f"Token file '{os.path.basename(file_path)}' not found in your folder. Please provide it.")
-    except Exception as e:
-        raise Exception(f"Error loading tokens: {e}")
+# --- AUTO SETUP TOKENS ---
+def setup_tokens(region):
+    """यूज़र को टर्मिनल में टोकन पेस्ट करने को कहेगा और फाइल बना देगा"""
+    token_file = {
+        "IND": "token_ind.json",
+        "BR": "token_br.json",
+        "US": "token_br.json",
+        "SAC": "token_br.json",
+        "NA": "token_br.json"
+    }.get(region, "token_bd.json")
+    
+    file_path = os.path.join(os.getcwd(), token_file)
+    
+    if os.path.exists(file_path):
+        overwrite = input(f"⚠️ {token_file} already exists. Overwrite? (y/n): ")
+        if overwrite.lower() != 'y':
+            return f"✅ Using existing {token_file}"
+    
+    print(f"\n📌 Paste your tokens for region {region} (one per line)")
+    print("👉 Format: Bearer token (just the token string)")
+    print("👉 Press Enter twice when done\n")
+    
+    tokens = []
+    while True:
+        line = input("Token > ").strip()
+        if not line:
+            if tokens:
+                break
+            print("⚠️ Please enter at least one token")
+            continue
+        tokens.append({"token": line})
+    
+    with open(file_path, "w") as f:
+        json.dump(tokens, f, indent=2)
+    
+    print(f"✅ Saved {len(tokens)} tokens to {token_file}")
+    return f"✅ Setup complete!"
 
-# --- एन्क्रिप्शन लॉजिक ---
+def load_user_tokens(region):
+    cwd = os.getcwd()
+    token_file = {
+        "IND": "token_ind.json",
+        "BR": "token_br.json",
+        "US": "token_br.json",
+        "SAC": "token_br.json",
+        "NA": "token_br.json"
+    }.get(region, "token_bd.json")
+    
+    file_path = os.path.join(cwd, token_file)
+    
+    if not os.path.exists(file_path):
+        print(f"⚠️ Token file '{token_file}' not found!")
+        print(f"🔄 Running setup automatically...")
+        setup_tokens(region)
+    
+    with open(file_path, "r") as f:
+        return json.load(f)
+
+# --- ENCRYPTION ---
 def encrypt_message(plaintext):
     try:
         key = b'Yg&tc%DEuh6%Zc^8'
@@ -40,7 +79,7 @@ def encrypt_message(plaintext):
         padded_message = pad(plaintext, AES.block_size)
         encrypted_message = cipher.encrypt(padded_message)
         return binascii.hexlify(encrypted_message).decode('utf-8')
-    except Exception as e:
+    except Exception:
         return None
 
 def create_protobuf_message(user_id, region):
@@ -60,7 +99,7 @@ def enc(uid):
     if protobuf_data is None: return None
     return encrypt_message(protobuf_data)
 
-# --- रिक्वेस्ट लॉजिक ---
+# --- REQUESTS ---
 async def send_request(encrypted_uid, token, url):
     try:
         edata = bytes.fromhex(encrypted_uid)
@@ -82,7 +121,7 @@ async def send_request(encrypted_uid, token, url):
 async def send_multiple_requests(uid, region, url):
     protobuf_message = create_protobuf_message(uid, region)
     encrypted_uid = encrypt_message(protobuf_message)
-    tokens = load_user_tokens(region)  # यूजर के टोकन इस्तेमाल होंगे
+    tokens = load_user_tokens(region)
     
     tasks = []
     for i in range(100):
